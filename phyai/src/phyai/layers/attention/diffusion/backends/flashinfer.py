@@ -60,8 +60,8 @@ class FlashInferDiffusionBackend(DiffusionAttentionBackend):
         except ImportError as e:
             raise ImportError(
                 "backend='flashinfer' (diffusion) but flashinfer is not "
-                "installed; either install flashinfer-python or pick "
-                "backend='eager'."
+                "installed; install flashinfer-python. The diffusion paged "
+                "stack is flashinfer-only (GPU)."
             ) from e
         self._wrapper = None
         self._wrapper_use_cuda_graph: bool | None = None

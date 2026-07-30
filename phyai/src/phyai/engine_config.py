@@ -93,11 +93,11 @@ class BackendConfig:
         :class:`~phyai.layers.attention.DiffusionAttention`); each
         stack's per-construction lookup resolves it against its own
         registry. Production names: ``"flashinfer"`` (default) /
-        ``"sdpa"`` / ``"eager"``. ``"sdpa"`` only registers in the
-        no-cache stack — code that picks paged backends for AR or
-        diffusion derives ``"eager"`` as the fallback when ``attn`` is
-        ``"sdpa"`` (see ``_engine_to_paged_backend`` in pi05's
-        ``modeling_pi05``).
+        ``"sdpa"`` / ``"eager"``. ``"sdpa"`` and ``"eager"`` only
+        register in the no-cache stack — the AR and diffusion paged
+        stacks are flashinfer-only (GPU). Code that picks paged
+        backends rejects non-flashinfer names (see
+        ``_engine_to_paged_backend`` in pi05's ``modeling_pi05``).
     norm:
         :class:`~phyai.layers.layer_norm.RMSNorm` / ``LayerNorm``
         backend (``"flashinfer"`` / ``"phyai-kernel"``).
@@ -255,6 +255,11 @@ class ParallelConfig:
 
     * ``dp`` — data parallel: full model replica per group, different
       micro-batches.
+    * ``cfg`` — classifier-free-guidance parallel: the conditional and
+      unconditional CFG branches of a diffusion step run concurrently on
+      disjoint groups (each a full ``tp`` group), recombined with one
+      cross-``cfg`` all-gather. Sits just outside ``tp`` so every cfg group
+      is a contiguous tensor-parallel block.
     * ``ep`` — expert parallel: distinct MoE experts per rank.
     * ``sp`` — sequence parallel: shards activations along the sequence
       axis (Megatron-style sub-mode of TP).
@@ -265,12 +270,13 @@ class ParallelConfig:
       interconnect.
 
     Single-axis runs leave the unused sizes at 1; the engine still
-    builds a 5-axis mesh so model code addressing ``axis="tp"`` keeps
-    working unchanged.
+    builds a 6-axis mesh so model code addressing ``axis="tp"`` keeps
+    working unchanged (size-1 axes short-circuit through the collectives).
     """
 
     world_size: int = 1
     dp_size: int = 1
+    cfg_size: int = 1
     ep_size: int = 1
     sp_size: int = 1
     cp_size: int = 1
@@ -280,6 +286,7 @@ class ParallelConfig:
         for name in (
             "world_size",
             "dp_size",
+            "cfg_size",
             "ep_size",
             "sp_size",
             "cp_size",
@@ -489,6 +496,8 @@ class EngineConfig:
             parallel_kw["world_size"] = v
         if (v := envs.PHYAI_DP_SIZE.get()) is not None:
             parallel_kw["dp_size"] = v
+        if (v := envs.PHYAI_CFG_SIZE.get()) is not None:
+            parallel_kw["cfg_size"] = v
         if (v := envs.PHYAI_EP_SIZE.get()) is not None:
             parallel_kw["ep_size"] = v
         if (v := envs.PHYAI_SP_SIZE.get()) is not None:
@@ -602,6 +611,33 @@ def init_engine_config(cfg: EngineConfig) -> EngineConfig:
     return cfg
 
 
+def resolve_engine_defaults(
+    params_dtype: torch.dtype | None,
+    attn_backend: str | None,
+    norm_backend: str | None,
+) -> tuple[torch.dtype, str, str]:
+    """Fill in ``None`` overrides from the process :class:`EngineConfig`.
+
+    Short-circuits when every argument is already a concrete override, so a
+    parent that has already resolved defaults can pass them through to a
+    child constructor without a second singleton read. Callers that
+    don't need ``attn_backend`` (norm-only sub-modules) just discard the
+    returned value.
+    """
+    if (
+        params_dtype is not None
+        and attn_backend is not None
+        and norm_backend is not None
+    ):
+        return params_dtype, attn_backend, norm_backend
+    ec = get_engine_config()
+    return (
+        ec.device.params_dtype if params_dtype is None else params_dtype,
+        ec.backends.attn if attn_backend is None else attn_backend,
+        ec.backends.norm if norm_backend is None else norm_backend,
+    )
+
+
 __all__ = [
     "BackendConfig",
     "DeviceConfig",
@@ -610,5 +646,6 @@ __all__ = [
     "RuntimeConfig",
     "get_engine_config",
     "init_engine_config",
+    "resolve_engine_defaults",
     "set_engine_config",
 ]
