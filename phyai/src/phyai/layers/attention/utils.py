@@ -75,6 +75,16 @@ def resolve_prefill_backend(override: str | None = None) -> str:
     return get_engine_config().runtime.flashinfer_prefill_backend or "auto"
 
 
+def resolve_disable_split_kv() -> bool:
+    """Whether flashinfer paged-prefill should disable split-KV.
+
+    Reads :attr:`~phyai.engine_config.RuntimeConfig.flashinfer_disable_split_kv`
+    on the :class:`EngineConfig` singleton. Passed straight to
+    ``BatchPrefillWithPagedKVCacheWrapper.plan(..., disable_split_kv=...)``.
+    """
+    return bool(get_engine_config().runtime.flashinfer_disable_split_kv)
+
+
 # Process-global flashinfer scratch. Keyed on
 # ``(device.type, device.index)`` so a multi-GPU process gets one
 # buffer per device rather than one buffer total.
@@ -147,6 +157,7 @@ def _reset_global_fi_workspaces() -> None:
 __all__ = [
     "get_global_fi_workspace",
     "register_global_fi_workspace",
+    "resolve_disable_split_kv",
     "resolve_prefill_backend",
     "resolve_workspace_bytes",
 ]

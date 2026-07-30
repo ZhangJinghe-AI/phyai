@@ -320,6 +320,11 @@ class RuntimeConfig:
         recommendation (see ``PI05RecommendedEngineConfig``) instead of forcing
         it here. Consumed by
         :func:`phyai.layers.attention.utils.resolve_prefill_backend`.
+    flashinfer_disable_split_kv:
+        Pass ``disable_split_kv=True`` into flashinfer's paged-prefill
+        ``plan()``. Turns off split-KV so the merge reduction no longer
+        depends on batch load — batch-size-invariant outputs under CUDA
+        graph (flashinfer 0.6+). Default ``False`` keeps the fast path.
     force_linear_kernel:
         Hard override for :class:`~phyai.layers.linear.KernelDispatcher`
         — when set, every :meth:`select` returns the kernel registered
@@ -355,6 +360,7 @@ class RuntimeConfig:
     use_cuda_graph: bool = True
     flashinfer_workspace_bytes: int = 128 * 1024 * 1024
     flashinfer_prefill_backend: str | None = None
+    flashinfer_disable_split_kv: bool = False
     force_linear_kernel: str | None = None
     debug_tensor_dump_dir: str | None = None
     debug_tensor_dump_filter: tuple[str, ...] | None = None

@@ -200,14 +200,18 @@ class PI05Processor(BaseModelProcessor):
         )
 
     def build_postprocessor(self) -> ProcessorPipeline:
+        # fix(zjh): pi05_base action dim equals max_action_dim (32), so lerobot's
+        # unnormalize→slice order is harmless there; pi05-libero (and other finetunes)
+        # use action_dim=7 while the engine still emits (..., max_action_dim=32) and
+        # unnormalize stats are only 7-wide — slice must run first or postprocess errors.
         steps = [
+            SliceActionStep(action_dim=self.action_dim),
             UnnormalizerStep(
                 features=_features_for_stats(self.dataset_stats),
                 norm_map=PI05_NORM_MAP,
                 stats=self.dataset_stats,
                 device=self.device,
             ),
-            SliceActionStep(action_dim=self.action_dim),
             DeviceStep(device="cpu"),
         ]
         return ProcessorPipeline(
@@ -298,7 +302,11 @@ class PI05Processor(BaseModelProcessor):
         pre.to_output = cls._to_inputs
 
         # Append the action slice to the loaded postprocess chain.
-        post.steps = [*list(post.steps), SliceActionStep(action_dim=action_dim)]
+        # fix(zjh): pi05_base action dim equals max_action_dim (32), so lerobot's
+        # unnormalize→slice order is harmless there; pi05-libero (and other finetunes)
+        # use action_dim=7 while the engine still emits (..., max_action_dim=32) and
+        # unnormalize stats are only 7-wide — slice must run first or postprocess errors.
+        post.steps = [SliceActionStep(action_dim=action_dim), *list(post.steps)]
         post.name = "pi05_postprocessor"
         post.to_transition = cls._action_to_transition
         post.to_output = cls._transition_to_action

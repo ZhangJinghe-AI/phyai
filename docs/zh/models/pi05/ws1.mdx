@@ -130,6 +130,14 @@ uv run python examples/run_pi05.py --checkpoint /path/to/pi0.5
 
 脚本会打印每阶段的 latency 统计(3 次预热 + 30 次计时的 mean / median / std / min / max)以及等价性检查的 `PASS` 行。把 `--checkpoint` 后的路径改成你本地的 checkpoint 路径即可。
 
+# PI05Processor 后处理顺序
+
+后处理链必须先把模型输出 action 裁剪到有效的 `action_dim`，再使用 checkpoint 里的反归一化统计量进行反归一化处理。
+
+<Warning>
+LeRobot 默认后处理顺序为 **unnormalize → slice**。`pi05_base`（`action_dim` = `max_action_dim` = 32）无影响。`pi05-libero` 等微调模型为 `action_dim=7`，而引擎仍输出 32 维、stats 仅 7 维 — **必须先 slice 再 unnormalize**，否则报错。`PI05Processor` 在链首插入 `SliceActionStep`；对 `pi05_base` 没有影响。
+</Warning>
+
 # 当前限制
 
 - 仅支持单卡。Tensor parallel、continuous batching、preemption 都不在 `PI05WS1Scheduler` 的范围内。

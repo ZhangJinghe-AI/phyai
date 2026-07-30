@@ -28,6 +28,7 @@ from phyai.layers.attention.diffusion.base import (
 from phyai.layers.attention.diffusion.registry import register_backend
 from phyai.layers.attention.utils import (
     get_global_fi_workspace,
+    resolve_disable_split_kv,
     resolve_prefill_backend,
 )
 
@@ -63,6 +64,7 @@ class FlashInferDiffusionBackend(DiffusionAttentionBackend):
                 "backend='eager'."
             ) from e
         self._wrapper = None
+        self._wrapper_use_cuda_graph: bool | None = None
         self._cu_q_buf: torch.Tensor | None = None
         self._paged_kv_indptr_buf: torch.Tensor | None = None
         self._paged_kv_indices_buf: torch.Tensor | None = None
@@ -86,8 +88,15 @@ class FlashInferDiffusionBackend(DiffusionAttentionBackend):
         layer_proto: DiffusionAttentionLayerProto,
     ) -> None:
         from flashinfer.prefill import BatchPrefillWithPagedKVCacheWrapper
+        from phyai.engine_config import get_engine_config
 
-        if self._wrapper is not None:
+        # See AR sibling: rebuild when RuntimeConfig.use_cuda_graph flips
+        # (QVLA eager→recapture), otherwise graph replay segfaults.
+        desired_use_cuda_graph = bool(get_engine_config().runtime.use_cuda_graph)
+        if (
+            self._wrapper is not None
+            and self._wrapper_use_cuda_graph == desired_use_cuda_graph
+        ):
             return
         self._max_batch_size = int(max_batch_size)
         self._max_paged_kv_indices = int(max_paged_kv_indices)
@@ -112,12 +121,13 @@ class FlashInferDiffusionBackend(DiffusionAttentionBackend):
             workspace,
             "NHD",
             backend=resolve_prefill_backend(),
-            use_cuda_graph=True,
+            use_cuda_graph=desired_use_cuda_graph,
             qo_indptr_buf=self._cu_q_buf,
             paged_kv_indptr_buf=self._paged_kv_indptr_buf,
             paged_kv_indices_buf=self._paged_kv_indices_buf,
             paged_kv_last_page_len_buf=self._paged_kv_last_page_len_buf,
         )
+        self._wrapper_use_cuda_graph = desired_use_cuda_graph
 
     def init_forward_metadata(
         self, meta: DiffusionAttnMetadata
@@ -168,6 +178,7 @@ class FlashInferDiffusionBackend(DiffusionAttentionBackend):
             sm_scale=proto.scale,
             q_data_type=self._params_dtype,
             kv_data_type=self._params_dtype,
+            disable_split_kv=resolve_disable_split_kv(),
         )
 
     def forward(

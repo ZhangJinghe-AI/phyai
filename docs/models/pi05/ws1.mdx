@@ -130,6 +130,14 @@ uv run python examples/run_pi05.py --checkpoint /path/to/pi0.5
 
 The script prints per-phase latency stats (mean / median / std / min / max over 3 warmups + 30 timed runs) and a `PASS` line for the equivalence check. Just change the path after `--checkpoint` to your local checkpoint path.
 
+# PI05Processor postprocessing order
+
+The postprocess pipeline must trim model actions to the dataset's real `action_dim` **before** applying the checkpoint's unnormalizer stats.
+
+<Warning>
+LeRobot's default postprocess order is **unnormalize → slice**. That is fine for `pi05_base` (`action_dim` = `max_action_dim` = 32). Finetuned checkpoints such as `pi05-libero` use `action_dim=7` while the engine still emits 32-dim actions and stats are 7-dim — **slice must come first** or postprocess fails. `PI05Processor` prepends `SliceActionStep`; harmless for `pi05_base`.
+</Warning>
+
 # Current limitations
 
 - Single GPU only. Tensor parallel, continuous batching, and preemption are all out of scope for `PI05WS1Scheduler`.

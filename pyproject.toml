@@ -2,7 +2,7 @@
 name = "phyai-monorepo"
 version = "0.1.0"
 description = "phyai — Physical AI. Workspace coordinator."
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 dependencies = [
     "phyai",
     "phyai-kernel",

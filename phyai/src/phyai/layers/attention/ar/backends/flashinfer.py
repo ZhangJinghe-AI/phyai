@@ -32,6 +32,7 @@ from phyai.layers.attention.ar.base import (
 from phyai.layers.attention.ar.registry import register_backend
 from phyai.layers.attention.utils import (
     get_global_fi_workspace,
+    resolve_disable_split_kv,
     resolve_prefill_backend,
 )
 
@@ -67,6 +68,7 @@ class FlashInferARBackend(ARAttentionBackend):
                 "either install flashinfer-python or pick backend='eager'."
             ) from e
         self._wrapper = None
+        self._wrapper_use_cuda_graph: bool | None = None
         self._cu_q_buf: torch.Tensor | None = None
         self._paged_kv_indptr_buf: torch.Tensor | None = None
         self._paged_kv_indices_buf: torch.Tensor | None = None
@@ -90,8 +92,21 @@ class FlashInferARBackend(ARAttentionBackend):
         layer_proto: ARAttentionLayerProto,
     ) -> None:
         from flashinfer.prefill import BatchPrefillWithPagedKVCacheWrapper
+        from phyai.engine_config import get_engine_config
 
-        if self._wrapper is not None:
+        # ``use_cuda_graph`` follows RuntimeConfig: in graph mode flashinfer
+        # pads the launch grid to a fixed size, which is required for capture
+        # but (as of 0.6.x) unguarded when disable_split_kv=True — eager runs
+        # must use the exact-grid plan path.
+        #
+        # Rebuild when the flag flips (QVLA path: eager Engine init → layer
+        # swap → recapture). Keeping an eager wrapper under a captured graph
+        # segfaults on ``cuGraphLaunch``.
+        desired_use_cuda_graph = bool(get_engine_config().runtime.use_cuda_graph)
+        if (
+            self._wrapper is not None
+            and self._wrapper_use_cuda_graph == desired_use_cuda_graph
+        ):
             return
         self._max_batch_size = int(max_batch_size)
         self._max_paged_kv_indices = int(max_paged_kv_indices)
@@ -117,12 +132,13 @@ class FlashInferARBackend(ARAttentionBackend):
             workspace,
             "NHD",
             backend=resolve_prefill_backend(),
-            use_cuda_graph=True,
+            use_cuda_graph=desired_use_cuda_graph,
             qo_indptr_buf=self._cu_q_buf,
             paged_kv_indptr_buf=self._paged_kv_indptr_buf,
             paged_kv_indices_buf=self._paged_kv_indices_buf,
             paged_kv_last_page_len_buf=self._paged_kv_last_page_len_buf,
         )
+        self._wrapper_use_cuda_graph = desired_use_cuda_graph
 
     def init_forward_metadata(self, meta: ARAttnMetadata) -> ARAttnPlanHandle:
         self._plan_into_static_buffers(meta)
@@ -169,6 +185,7 @@ class FlashInferARBackend(ARAttentionBackend):
             sm_scale=proto.scale,
             q_data_type=self._params_dtype,
             kv_data_type=self._params_dtype,
+            disable_split_kv=resolve_disable_split_kv(),
         )
 
     def forward(
