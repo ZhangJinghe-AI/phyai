@@ -88,6 +88,20 @@ def test_make_pi05_processors_factory(monkeypatch):
     assert post.name == "pi05_postprocessor"
 
 
+def test_discrete_state_off_uses_pi0_prompt():
+    from phyai_utils_tools.models.pi05.steps_pi05 import StateTokenizerPrepareStep
+    from phyai_utils_tools.processing.transition import PROMPT, STATE, TASK
+
+    step = StateTokenizerPrepareStep(discrete_state_input=False)
+    out = step(
+        {
+            TASK: ["pull the handle to open the drawer"],
+            STATE: torch.zeros(1, 7),
+        }
+    )
+    assert out[PROMPT] == ["pull the handle to open the drawer\n"]
+
+
 def test_save_then_from_pretrained_roundtrip(monkeypatch, tmp_path):
     """save_pretrained writes lerobot json; from_pretrained rebuilds an equivalent processor."""
     proc = _make_processor(monkeypatch, num_images=2, action_dim=7)

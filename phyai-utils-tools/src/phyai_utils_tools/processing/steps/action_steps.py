@@ -44,4 +44,58 @@ class SliceActionStep(ProcessorStep):
         return {"action_dim": self.action_dim}
 
 
-__all__ = ["SliceActionStep"]
+@ProcessorStepRegistry.register("relative_actions_processor")
+@dataclass
+class RelativeActionsProcessorStep(ProcessorStep):
+    """LeRobot relative-action step. Disabled checkpoints pass the transition through."""
+
+    enabled: bool = False
+    exclude_joints: list[str] | None = None
+    action_names: list[str] | None = None
+
+    def __call__(self, transition: Transition) -> Transition:
+        if not self.enabled:
+            return transition
+        raise ValueError(
+            "relative_actions_processor is enabled, but this server only loads "
+            "checkpoints that store absolute actions (enabled: false)."
+        )
+
+    def get_config(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "exclude_joints": self.exclude_joints,
+            "action_names": self.action_names,
+        }
+
+
+@ProcessorStepRegistry.register("absolute_actions_processor")
+@dataclass
+class AbsoluteActionsProcessorStep(ProcessorStep):
+    """LeRobot absolute-action step. Disabled checkpoints pass the transition through."""
+
+    enabled: bool = False
+    exclude_joints: list[str] | None = None
+    action_names: list[str] | None = None
+
+    def __call__(self, transition: Transition) -> Transition:
+        if not self.enabled:
+            return transition
+        raise ValueError(
+            "absolute_actions_processor is enabled, but this server only loads "
+            "checkpoints that already emit absolute actions (enabled: false)."
+        )
+
+    def get_config(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "exclude_joints": self.exclude_joints,
+            "action_names": self.action_names,
+        }
+
+
+__all__ = [
+    "AbsoluteActionsProcessorStep",
+    "RelativeActionsProcessorStep",
+    "SliceActionStep",
+]

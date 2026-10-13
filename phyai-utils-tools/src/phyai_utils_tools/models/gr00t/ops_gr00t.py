@@ -139,11 +139,14 @@ def eval_transform_image(
     image_target_size: tuple[int, int] | None,
     image_crop_size: tuple[int, int] | None,
     crop_fraction: float | None,
+    letter_box_transform: bool = False,
 ) -> np.ndarray:
     """Deterministic GR00T eval image transform returning CHW uint8.
 
-    Prefers the cv2 path (matches the official transform); falls back to PIL
-    when OpenCV is unavailable.
+    Matches NVIDIA ``build_image_transformations_albumentations`` eval path:
+    optional letterbox, shortest-edge resize, fractional center crop, resize
+    again. ``letter_box_transform`` defaults off, which is what the SimplerEnv
+    checkpoints set.
     """
     if image.dtype != np.uint8:
         raise TypeError(f"image must be uint8, got {image.dtype}.")
@@ -153,11 +156,13 @@ def eval_transform_image(
         image_target_size=image_target_size,
         image_crop_size=image_crop_size,
         crop_fraction=crop_fraction,
+        letter_box_transform=letter_box_transform,
     )
     if transformed is not None:
         return transformed
     pil = Image.fromarray(image)
-    pil = _letterbox_pad_pil(pil)
+    if letter_box_transform:
+        pil = _letterbox_pad_pil(pil)
     max_size = _resolve_max_size(shortest_image_edge, image_target_size)
     pil = _resize_shortest_edge(pil, max_size)
     fraction = _resolve_crop_fraction(crop_fraction, image_crop_size, image_target_size)
@@ -200,12 +205,14 @@ def _eval_transform_image_cv2(
     image_target_size: tuple[int, int] | None,
     image_crop_size: tuple[int, int] | None,
     crop_fraction: float | None,
+    letter_box_transform: bool = False,
 ) -> np.ndarray | None:
     try:
         import cv2
     except ImportError:
         return None
-    image = _letterbox_pad_cv2(image, cv2)
+    if letter_box_transform:
+        image = _letterbox_pad_cv2(image, cv2)
     max_size = _resolve_max_size(shortest_image_edge, image_target_size)
     image = _resize_shortest_edge_cv2(image, int(max_size), cv2)
     fraction = _resolve_crop_fraction(crop_fraction, image_crop_size, image_target_size)

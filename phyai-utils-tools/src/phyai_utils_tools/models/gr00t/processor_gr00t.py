@@ -264,6 +264,7 @@ class GR00TProcessor:
         image_target_size: list[int] | tuple[int, int] | None = (256, 256),
         shortest_image_edge: int | None = 256,
         crop_fraction: float | None = 0.95,
+        letter_box_transform: bool = False,
         transformers_loading_kwargs: dict[str, Any] | None = None,
         tokenizer: Any | None = None,
         vlm_processor: Any | None = None,
@@ -290,6 +291,7 @@ class GR00TProcessor:
         self.image_target_size = tuple2(image_target_size)
         self.shortest_image_edge = shortest_image_edge
         self.crop_fraction = crop_fraction
+        self.letter_box_transform = bool(letter_box_transform)
         self.transformers_loading_kwargs = dict(transformers_loading_kwargs or {})
         self._tokenizer = tokenizer
         if self._tokenizer is not None:
@@ -362,6 +364,7 @@ class GR00TProcessor:
             "image_target_size",
             "shortest_image_edge",
             "crop_fraction",
+            "letter_box_transform",
             "transformers_loading_kwargs",
             "tokenizer",
             "vlm_processor",
@@ -683,6 +686,7 @@ class GR00TProcessor:
                         image_target_size=self.image_target_size,
                         image_crop_size=self.image_crop_size,
                         crop_fraction=self.crop_fraction,
+                        letter_box_transform=self.letter_box_transform,
                     )
                 )
             transformed_images.append(np.stack(transformed_frames, axis=0))
